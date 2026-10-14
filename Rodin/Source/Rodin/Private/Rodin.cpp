@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Rodin.h"
+#include "RodinControlNetPanel.h"
 #include "RodinPluginStyle.h"
 #include "RodinPluginCommands.h"
 #if WITH_EDITOR
@@ -76,6 +77,14 @@ void FRodinModule::PluginButtonClicked()
 		UE_LOG(LogTemp, Error, TEXT("Failed to load EditorUtilityWidgetBlueprint TaskPanel"));
 		return;
 	}
+
+    FString AdaptationError;
+    if (!RodinControlNetPanel::Apply(EditorWidget, AdaptationError))
+    {
+        UE_LOG(LogTemp, Error, TEXT("%s"), *AdaptationError);
+        FMessageDialog::Open(EAppMsgType::Ok, FText::FromString(AdaptationError));
+        return;
+    }
 
 	UEditorUtilitySubsystem* EditorUtilitySubsystem = GEditor->GetEditorSubsystem<UEditorUtilitySubsystem>();
 	if (EditorUtilitySubsystem)

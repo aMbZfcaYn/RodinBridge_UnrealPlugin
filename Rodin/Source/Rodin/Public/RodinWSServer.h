@@ -217,6 +217,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "RodinWS|BP")
     static UTexture2D* BP_PreviewImg(FString imgPath);
 
+    /** Last input/condition error. Successful submission construction clears this value. */
+    UPROPERTY(BlueprintReadOnly, Category = "RodinWS|Server|BP")
+    FString LastSubmissionError;
+
     UFUNCTION(BlueprintCallable,  Category = "RodinWS|Server|BP")
     void ST_SubmitInfo(
         FString mode_controlNet, FString prompt_partMode, FString mode_windowsClick,
@@ -240,6 +244,7 @@ public:
     
     UFUNCTION(BlueprintCallable, Category = "RodinWS|BP", meta = (DisplayName = "Get Actor Size"))
     static void BP_actorSize(AActor* TargetActor, float& sizeX, float& sizeY, float& sizeZ);
+
     
     void ST_Push();
     void ST_Run();

@@ -1,6 +1,9 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "RodinWSServer.h"
+#include "RodinControlNet.h"
+#include "Misc/App.h"
+#include "Misc/MessageDialog.h"
 
 #include "Misc/Guid.h"
 #include "Misc/FileHelper.h"
@@ -169,236 +172,153 @@ UTexture2D* URodinWSServer::BP_PreviewImg(FString imgPath)
 }
 
 void URodinWSServer::ST_SubmitInfo(
-	FString mode_controlNet, FString prompt_partMode, FString mode_windowsClick,
-	bool bUseShaded, bool bUsePBR, bool bBypass, bool bTextTo,
-	FString resolution_mat, FString align_noneMode, FString ImagePath, FString polygons,
-	FString modelFilePath, FString voxel_condition_cfg, FString modeGenerationExpansion,
-	float height_model, float voxel_condition_weight, float pcd_condition_uncertainty, int quality,
-	bool& loadFileSuccess, bool& sendSuccess, FString& OutJson, FString& taskID)
+    FString mode_controlNet, FString prompt_partMode, FString mode_windowsClick,
+    bool bUseShaded, bool bUsePBR, bool bBypass, bool bTextTo,
+    FString resolution_mat, FString align_noneMode, FString ImagePath, FString polygons,
+    FString modelFilePath, FString voxel_condition_cfg, FString modeGenerationExpansion,
+    float height_model, float voxel_condition_weight, float pcd_condition_uncertainty, int quality,
+    bool& loadFileSuccess, bool& sendSuccess, FString& OutJson, FString& taskID)
 {
-	TSharedPtr<FJsonObject> RootObject = MakeShareable(new FJsonObject);
-	RootObject->SetStringField("type", "fetch_task_return");
-	RootObject->SetStringField("sid", onlySID);
-
-	TSharedPtr<FJsonObject> TaskObject = MakeShareable(new FJsonObject);
-	TaskObject->SetStringField("type", mode_controlNet);
-	TaskObject->SetStringField("id", onlySID);
-	if (!prompt_partMode.IsEmpty())
-	{
-		TaskObject->SetStringField("prompt", prompt_partMode);
-	}
-	else
-	{
-		TaskObject->SetStringField("prompt", "");
-	}
-
-	TSharedPtr<FJsonObject> ConfigObject = MakeShareable(new FJsonObject);
-	ConfigObject->SetStringField("type", mode_windowsClick);
-
-	TSharedPtr<FJsonObject> MaterialObject = MakeShareable(new FJsonObject);
-	TArray<TSharedPtr<FJsonValue>> TypeArray;
-	if (bUseShaded) TypeArray.Add(MakeShared<FJsonValueString>(TEXT("Shaded")));
-	if (bUsePBR)    TypeArray.Add(MakeShared<FJsonValueString>(TEXT("PBR")));
-	MaterialObject->SetArrayField("type", TypeArray);
-	MaterialObject->SetStringField("resolution", resolution_mat);
-
-	ConfigObject->SetObjectField("material", MaterialObject);
-	ConfigObject->SetNumberField("height", height_model);
-	ConfigObject->SetStringField("align", align_noneMode);
-
-	ConfigObject->SetStringField("voxel_condition_cfg", voxel_condition_cfg);
-	ConfigObject->SetNumberField("voxel_condition_weight", voxel_condition_weight);
-	ConfigObject->SetNumberField("pcd_condition_uncertainty", pcd_condition_uncertainty);
-	ConfigObject->SetStringField("polygons", polygons);
-	ConfigObject->SetStringField("mode", modeGenerationExpansion);
-	ConfigObject->SetNumberField("quality", quality);
-	ConfigObject->SetBoolField("textTo", bTextTo);
-	ConfigObject->SetBoolField("bypass", bBypass);
-	ConfigObject->SetStringField("text", prompt_partMode);
-
-	TaskObject->SetObjectField("config", ConfigObject);
-
-	TArray<TSharedPtr<FJsonValue>> ImageArray;
-	if (!ImagePath.IsEmpty())
-	{
-		TArray<uint8> ImageData;
-		if (!FFileHelper::LoadFileToArray(ImageData, *ImagePath))
-		{
-			UE_LOG(LogTemp, Error, TEXT("Failed to load image file: %s"), *ImagePath);
-			loadFileSuccess = false;
-		}
-
-		FString MD5Hash = FMD5::HashBytes(ImageData.GetData(), ImageData.Num());
-
-		TSharedPtr<FJsonObject> ImageObject = MakeShareable(new FJsonObject);
-		ImageObject->SetStringField("format", "png");
-		ImageObject->SetNumberField("length", ImageData.Num());
-		ImageObject->SetStringField("md5", MD5Hash);
-		ImageObject->SetStringField("content", "data:image/png;base64," + FBase64::Encode(ImageData));
-
-		ImageArray.Add(MakeShareable(new FJsonValueObject(ImageObject)));
-	}
-	TaskObject->SetArrayField("image", ImageArray);
-
-	TSharedPtr<FJsonObject> ConditionObject = nullptr;
-
-	if (!modelFilePath.IsEmpty())
-	{
-		TArray<uint8> fbxData;
-		if (FFileHelper::LoadFileToArray(fbxData, *modelFilePath))
-		{
-			ConditionObject = MakeShareable(new FJsonObject);
-			FString MD5Hash = FMD5::HashBytes(fbxData.GetData(), fbxData.Num());
-			FString Base64Content = "data:model/fbx;base64," + FBase64::Encode(fbxData);
-
-			ConditionObject->SetStringField("format", "fbx");
-			ConditionObject->SetNumberField("length", fbxData.Num());
-			ConditionObject->SetStringField("md5", MD5Hash);
-			ConditionObject->SetStringField("content", Base64Content);
-		}
-		else
-		{
-			UE_LOG(LogTemp, Error, TEXT("Failed to load fbx file: %s"), *modelFilePath);
-			loadFileSuccess = false;
-		}
-	}
-
-	if (ConditionObject.IsValid()) {
-		TaskObject->SetObjectField("condition", ConditionObject);
-	}
-	else {
-		TaskObject->SetObjectField("condition", MakeShareable(new FJsonObject));
-	}
-
-	RootObject->SetObjectField("task", TaskObject);
-
-	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutJson);
-	if (!FJsonSerializer::Serialize(RootObject.ToSharedRef(), Writer))
-	{
-		UE_LOG(LogTemp, Error, TEXT("Failed to serialize JSON"));
-	}
-	taskID = onlySID;
+    TArray<FString> ImagePaths;
+    if (!ImagePath.IsEmpty()) ImagePaths.Add(ImagePath);
+    ST_SubmitInfo_Multi(mode_controlNet, prompt_partMode, mode_windowsClick,
+        bUseShaded, bUsePBR, bBypass, bTextTo, resolution_mat, align_noneMode, ImagePaths,
+        polygons, modelFilePath, voxel_condition_cfg, modeGenerationExpansion,
+        height_model, voxel_condition_weight, pcd_condition_uncertainty, quality,
+        loadFileSuccess, sendSuccess, OutJson, taskID);
 }
 
 void URodinWSServer::ST_SubmitInfo_Multi(
-	FString mode_controlNet, FString prompt_partMode, FString mode_windowsClick, 
-	bool bUseShaded, bool bUsePBR, bool bBypass, bool bTextTo, 
-	FString resolution_mat, FString align_noneMode, TArray<FString> ImagePaths,
-	FString polygons, FString modelFilePath, FString voxel_condition_cfg, 
-	FString modeGenerationExpansion, float height_model, float voxel_condition_weight, float pcd_condition_uncertainty, int quality, 
-	bool& loadFileSuccess, bool& sendSuccess, FString& OutJson, FString& taskID)
+    FString mode_controlNet, FString prompt_partMode, FString mode_windowsClick,
+    bool bUseShaded, bool bUsePBR, bool bBypass, bool bTextTo,
+    FString resolution_mat, FString align_noneMode, TArray<FString> ImagePaths,
+    FString polygons, FString modelFilePath, FString voxel_condition_cfg,
+    FString modeGenerationExpansion, float height_model, float voxel_condition_weight, float pcd_condition_uncertainty, int quality,
+    bool& loadFileSuccess, bool& sendSuccess, FString& OutJson, FString& taskID)
 {
-	loadFileSuccess = true;
-	sendSuccess = false;
+    loadFileSuccess = true;
+    sendSuccess = false;
 
-	TSharedPtr<FJsonObject> RootObject = MakeShareable(new FJsonObject);
-	RootObject->SetStringField("type", "fetch_task_return");
-	RootObject->SetStringField("sid", onlySID);
+    OutJson.Reset();
+    taskID.Reset();
+    LastSubmissionError.Reset();
+    auto Fail = [&](const FString& Error)
+    {
+        loadFileSuccess = false;
+        LastSubmissionError = Error;
+        UE_LOG(LogTemp, Warning, TEXT("Rodin submission stopped: %s"), *Error);
+        if (!IsRunningCommandlet() && !FApp::IsUnattended() && !Error.StartsWith(TEXT("ControlNet submission cancelled:")))
+            FMessageDialog::Open(EAppMsgType::Ok, FText::FromString(Error));
+    };
+    // Validate image inputs before generating a mesh or asking the user for a condition.
 
-	TSharedPtr<FJsonObject> TaskObject = MakeShareable(new FJsonObject);
-	TaskObject->SetStringField("type", mode_controlNet);
-	TaskObject->SetStringField("id", onlySID);
-	TaskObject->SetStringField("prompt", prompt_partMode.IsEmpty() ? "" : prompt_partMode);
+    TSharedPtr<FJsonObject> RootObject = MakeShareable(new FJsonObject);
+    RootObject->SetStringField("type", "fetch_task_return");
+    RootObject->SetStringField("sid", onlySID);
 
-	TSharedPtr<FJsonObject> ConfigObject = MakeShareable(new FJsonObject);
-	ConfigObject->SetStringField("type", mode_windowsClick);
+    TSharedPtr<FJsonObject> TaskObject = MakeShareable(new FJsonObject);
+    const RodinControlNet::EMode Mode = RodinControlNet::ParseMode(mode_controlNet);
+    if (Mode == RodinControlNet::EMode::Invalid)
+    {
+        Fail(FString::Printf(TEXT("Unsupported ControlNet mode: %s"), *mode_controlNet));
+        return;
+    }
+    const TCHAR* WireMode = Mode == RodinControlNet::EMode::Image ? TEXT("Image") :
+        Mode == RodinControlNet::EMode::BoundingBox ? TEXT("bbox") :
+        Mode == RodinControlNet::EMode::Voxel ? TEXT("voxel") : TEXT("pointCloud");
+    TaskObject->SetStringField(TEXT("type"), WireMode);
+    TaskObject->SetStringField("id", onlySID);
+    TaskObject->SetStringField("prompt", prompt_partMode.IsEmpty() ? "" : prompt_partMode);
 
-	TSharedPtr<FJsonObject> MaterialObject = MakeShareable(new FJsonObject);
-	TArray<TSharedPtr<FJsonValue>> TypeArray;
-	if (bUseShaded) TypeArray.Add(MakeShared<FJsonValueString>(TEXT("Shaded")));
-	if (bUsePBR)    TypeArray.Add(MakeShared<FJsonValueString>(TEXT("PBR")));
-	MaterialObject->SetArrayField("type", TypeArray);
-	MaterialObject->SetStringField("resolution", resolution_mat);
+    TSharedPtr<FJsonObject> ConfigObject = MakeShareable(new FJsonObject);
+    ConfigObject->SetStringField("type", mode_windowsClick);
 
-	ConfigObject->SetObjectField("material", MaterialObject);
-	ConfigObject->SetNumberField("height", height_model);
-	ConfigObject->SetStringField("align", align_noneMode);
-	ConfigObject->SetStringField("voxel_condition_cfg", voxel_condition_cfg);
-	ConfigObject->SetNumberField("voxel_condition_weight", voxel_condition_weight);
-	ConfigObject->SetNumberField("pcd_condition_uncertainty", pcd_condition_uncertainty);
-	ConfigObject->SetStringField("polygons", polygons);
-	ConfigObject->SetStringField("mode", modeGenerationExpansion);
-	ConfigObject->SetNumberField("quality", quality);
-	ConfigObject->SetBoolField("textTo", bTextTo);
-	ConfigObject->SetBoolField("bypass", bBypass);
-	ConfigObject->SetStringField("text", prompt_partMode);
+    TSharedPtr<FJsonObject> MaterialObject = MakeShareable(new FJsonObject);
+    TArray<TSharedPtr<FJsonValue>> TypeArray;
+    if (bUseShaded) TypeArray.Add(MakeShared<FJsonValueString>(TEXT("Shaded")));
+    if (bUsePBR)    TypeArray.Add(MakeShared<FJsonValueString>(TEXT("PBR")));
+    MaterialObject->SetArrayField("type", TypeArray);
+    MaterialObject->SetStringField("resolution", resolution_mat);
 
-	TaskObject->SetObjectField("config", ConfigObject);
+    ConfigObject->SetObjectField("material", MaterialObject);
+    ConfigObject->SetNumberField("height", height_model);
+    ConfigObject->SetStringField("align", align_noneMode);
+    ConfigObject->SetStringField("voxel_condition_cfg", voxel_condition_cfg);
+    ConfigObject->SetNumberField("voxel_condition_weight", voxel_condition_weight);
+    ConfigObject->SetNumberField("pcd_condition_uncertainty", pcd_condition_uncertainty);
+    ConfigObject->SetStringField("polygons", polygons);
+    ConfigObject->SetStringField("mode", modeGenerationExpansion);
+    ConfigObject->SetNumberField("quality", quality);
+    ConfigObject->SetBoolField("textTo", bTextTo);
+    ConfigObject->SetBoolField("bypass", bBypass);
+    ConfigObject->SetStringField("text", prompt_partMode);
 
-	TArray<TSharedPtr<FJsonValue>> ImageArray;
-	for (const FString& ImagePath : ImagePaths)
-	{
-		if (ImagePath.IsEmpty()) continue;
+    TaskObject->SetObjectField("config", ConfigObject);
 
-		TArray<uint8> ImageData;
-		if (!FFileHelper::LoadFileToArray(ImageData, *ImagePath))
-		{
-			UE_LOG(LogTemp, Error, TEXT("Failed to load image file: %s"), *ImagePath);
-			loadFileSuccess = false;
-			continue;
-		}
+    TArray<TSharedPtr<FJsonValue>> ImageArray;
+    for (const FString& ImagePath : ImagePaths)
+    {
+        if (ImagePath.IsEmpty()) continue;
 
-		FString Extension = FPaths::GetExtension(ImagePath, true).ToLower(); 
-		if (Extension.StartsWith(TEXT(".")))
-		{
-			Extension = Extension.RightChop(1);
-		}
-		if (Extension.IsEmpty())
-		{
-			Extension = TEXT("png");
-		}
+        TArray<uint8> ImageData;
+        if (!FFileHelper::LoadFileToArray(ImageData, *ImagePath) || ImageData.IsEmpty())
+        {
+            Fail(FString::Printf(TEXT("Could not read input image: %s"), *ImagePath));
+            return;
+        }
 
-		FString MD5Hash = FMD5::HashBytes(ImageData.GetData(), ImageData.Num());
+        FString Extension = FPaths::GetExtension(ImagePath, true).ToLower();
+        if (Extension.StartsWith(TEXT(".")))
+        {
+            Extension = Extension.RightChop(1);
+        }
+        if (Extension.IsEmpty())
+        {
+            Extension = TEXT("png");
+        }
 
-		TSharedPtr<FJsonObject> ImageObject = MakeShareable(new FJsonObject);
-		ImageObject->SetStringField("format", Extension);
-		ImageObject->SetNumberField("length", ImageData.Num());
-		ImageObject->SetStringField("md5", MD5Hash);
-		ImageObject->SetStringField("content", FString::Printf(TEXT("data:image/%s;base64,%s"), *Extension, *FBase64::Encode(ImageData)));
+        FString MD5Hash = FMD5::HashBytes(ImageData.GetData(), ImageData.Num());
 
-		ImageArray.Add(MakeShareable(new FJsonValueObject(ImageObject)));
-	}
-	TaskObject->SetArrayField("image", ImageArray);
+        TSharedPtr<FJsonObject> ImageObject = MakeShareable(new FJsonObject);
+        ImageObject->SetStringField("format", Extension);
+        ImageObject->SetNumberField("length", ImageData.Num());
+        ImageObject->SetStringField("md5", MD5Hash);
+        ImageObject->SetStringField("content", FString::Printf(TEXT("data:image/%s;base64,%s"), *Extension, *FBase64::Encode(ImageData)));
 
-	TSharedPtr<FJsonObject> ConditionObject = nullptr;
-	if (!modelFilePath.IsEmpty())
-	{
-		TArray<uint8> fbxData;
-		if (FFileHelper::LoadFileToArray(fbxData, *modelFilePath))
-		{
-			ConditionObject = MakeShareable(new FJsonObject);
-			FString MD5Hash = FMD5::HashBytes(fbxData.GetData(), fbxData.Num());
-			FString Base64Content = "data:model/fbx;base64," + FBase64::Encode(fbxData);
+        ImageArray.Add(MakeShareable(new FJsonValueObject(ImageObject)));
+    }
+    if ((bTextTo && prompt_partMode.TrimStartAndEnd().IsEmpty()) || (!bTextTo && ImageArray.IsEmpty()))
+    {
+        Fail(bTextTo ? TEXT("Enter a text prompt before submitting.") : TEXT("Choose at least one input image before submitting."));
+        return;
+    }
+    TaskObject->SetArrayField("image", ImageArray);
 
-			ConditionObject->SetStringField("format", "fbx");
-			ConditionObject->SetNumberField("length", fbxData.Num());
-			ConditionObject->SetStringField("md5", MD5Hash);
-			ConditionObject->SetStringField("content", Base64Content);
-		}
-		else
-		{
-			UE_LOG(LogTemp, Error, TEXT("Failed to load fbx file: %s"), *modelFilePath);
-			loadFileSuccess = false;
-		}
-	}
 
-	if (ConditionObject.IsValid()) {
-		TaskObject->SetObjectField("condition", ConditionObject);
-	}
-	else {
-		TaskObject->SetObjectField("condition", MakeShareable(new FJsonObject));
-	}
+    RodinControlNet::FCondition Condition;
+    FString ConditionError;
+    if (!RodinControlNet::PrepareForSubmission(mode_controlNet, modelFilePath, Condition, ConditionError))
+    {
+        Fail(ConditionError);
+        return;
+    }
+    TaskObject->SetObjectField(TEXT("condition"), Condition.Json);
+    if (Condition.HeightInMeters.IsSet())
+        ConfigObject->SetNumberField(TEXT("height"), Condition.HeightInMeters.GetValue());
 
-	RootObject->SetObjectField("task", TaskObject);
+    RootObject->SetObjectField("task", TaskObject);
 
-	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutJson);
-	if (!FJsonSerializer::Serialize(RootObject.ToSharedRef(), Writer))
-	{
-		UE_LOG(LogTemp, Error, TEXT("Failed to serialize JSON"));
-	}
+    TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutJson);
+    if (!FJsonSerializer::Serialize(RootObject.ToSharedRef(), Writer))
+    {
+        OutJson.Reset();
+        Fail(TEXT("Could not serialize the Rodin task."));
+        return;
+    }
 
-	taskID = onlySID;
-	sendSuccess = true;
+    taskID = onlySID;
+    // Ready for the Blueprint to send; this is not a WebSocket delivery acknowledgement.
+    sendSuccess = true;
 }
 
 void URodinWSServer::ST_MessageParse(FString JsonString, bool& endDownload, FString& modelPath)
@@ -472,72 +392,19 @@ void URodinWSServer::ST_MessageParse(FString JsonString, bool& endDownload, FStr
 }
 void URodinWSServer::BP_actorSize(AActor* TargetActor, float& sizeX, float& sizeY, float& sizeZ)
 {
-	sizeX = sizeY = sizeZ = 0.0f;
-	if (!IsValid(TargetActor))
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Invalid Actor"));
-		return;
-	}
-
-	TArray<AActor*> ActorsToCheck;
-	TSet<AActor*> VisitedActors;
-	ActorsToCheck.Add(TargetActor);
-	VisitedActors.Add(TargetActor);
-
-	TArray<UStaticMeshComponent*> AllMeshComponents;
-
-	while (ActorsToCheck.Num() > 0)
-	{
-		AActor* CurrentActor = ActorsToCheck.Pop();
-		TArray<UStaticMeshComponent*> CurrentComponents;
-		CurrentActor->GetComponents<UStaticMeshComponent>(CurrentComponents);
-		AllMeshComponents.Append(CurrentComponents);
-
-		TArray<AActor*> ChildActors;
-		CurrentActor->GetAttachedActors(ChildActors);
-		for (AActor* Child : ChildActors)
-		{
-			if (IsValid(Child) && !VisitedActors.Contains(Child))
-			{
-				ActorsToCheck.Add(Child);
-				VisitedActors.Add(Child);
-			}
-		}
-	}
-
-	if (AllMeshComponents.Num() == 0)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("No StaticMeshComponents in actor hierarchy"));
-		return;
-	}
-
-	FVector TotalMin(FLT_MAX);
-	FVector TotalMax(-FLT_MAX);
-	for (UStaticMeshComponent* MeshComp : AllMeshComponents)
-	{
-		if (MeshComp && MeshComp->GetStaticMesh())
-		{
-			FVector Origin, BoxExtent;
-			MeshComp->GetLocalBounds(Origin, BoxExtent);
-			const FTransform& Transform = MeshComp->GetComponentTransform();
-			FVector WorldOrigin = Transform.TransformPosition(Origin);
-			FVector WorldExtent = Transform.GetScale3D() * BoxExtent;
-
-			FVector Min = WorldOrigin - WorldExtent;
-			FVector Max = WorldOrigin + WorldExtent;
-
-			TotalMin = TotalMin.ComponentMin(Min);
-			TotalMax = TotalMax.ComponentMax(Max);
-		}
-	}
-
-	sizeX = TotalMax.X - TotalMin.X;
-	sizeY = TotalMax.Y - TotalMin.Y;
-	sizeZ = TotalMax.Z - TotalMin.Z;
-
-	UE_LOG(LogTemp, Log, TEXT("Actor Size - X:%.2f Y:%.2f Z:%.2f"), sizeX, sizeY, sizeZ);
+    sizeX = sizeY = sizeZ = 0.0f;
+    FBox Bounds(ForceInit);
+    FString Error;
+    if (!RodinControlNet::GetActorBounds(TargetActor, Bounds, Error))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Could not measure Actor: %s"), *Error);
+        return;
+    }
+    const FVector Size = Bounds.GetSize();
+    sizeX = static_cast<float>(Size.X);
+    sizeY = static_cast<float>(Size.Y);
+    sizeZ = static_cast<float>(Size.Z);
 }
-
 
 void URodinWSServer::ST_Push()
 {

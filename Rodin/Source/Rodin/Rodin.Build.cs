@@ -70,6 +70,12 @@ public class Rodin : ModuleRules
                     "ToolMenus",
                     "EditorScriptingUtilities",
                     "UMGEditor",
+                    "UMG",
+                    "BlueprintGraph",
+                    "KismetCompiler",
+                    "AssetTools",
+                    "MeshDescription",
+                    "StaticMeshDescription",
                     "SlateCore"
 					// ... add private dependencies that you statically link with here ...	
 				}
